@@ -370,9 +370,17 @@
             <option value="43">Shows</option>
             <option value="44">Trailers</option>
           </select>
-          
+
           <input id="perPage" class="full" type="number" min="1" max="50" value="25" placeholder="Results per page (1–50)"/>
           <input id="pages" class="full" type="number" min="1" max="10" value="2" placeholder="Pages per query (1–10)"/>
+
+          <div class="full row">
+            <label class="switch">
+              <input id="advancedSearch" type="checkbox"/>
+              <small>Advanced Search</small>
+            </label>
+            <small class="meta"> (More results, more credits)</small>
+          </div>
 
           <div class="full row">
             <input id="minSubs" type="number" placeholder="Min subs"/>
@@ -475,6 +483,7 @@ let LIB = [];        // enriched channels
 let VIEW = [];       // filtered/sorted view
 let lastExport = [];
 let lastSearch = {};
+let isSearching = false; // Add search lock flag
 
 function setStatus(t){ $('status').innerText = t; }
 function setProgress(p){ $('progressBar').style.width = Math.min(100, Math.round(p*100)) + '%'; }
@@ -496,6 +505,8 @@ function getPublishedAfterISO(choice){
 }
 
 async function searchAll(){
+  if(isSearching) return; // Prevent multiple searches
+
   const apiKey = $('apiKey').value.trim();
   if(!apiKey) return alert('Enter your YouTube API key');
 
@@ -503,6 +514,8 @@ async function searchAll(){
   if(!raw) return alert('Enter at least one query');
   const queries = raw.split(/\n|,/).map(s=>s.trim()).filter(Boolean);
   if(!queries.length) return alert('No valid queries');
+
+  isSearching = true; // Set lock
 
   // filters
   const order = $('order').value || 'relevance';
@@ -512,11 +525,18 @@ async function searchAll(){
   const definition = $('definition').value || '';
   const safe = $('safe').value || '';
   const category = $('category').value || '';
-  const perPage = clamp(Number($('perPage').value)||25, 1, 50);
-  const pages = clamp(Number($('pages').value)||1, 1, 10);
+
+  let perPage = clamp(Number($('perPage').value)||25, 1, 50);
+  let pages = clamp(Number($('pages').value)||1, 1, 10);
+  
+  if ($('advancedSearch').checked) {
+      perPage = 50;
+      pages = 4;
+  }
 
   // reset
   resetResults();
+  LIB = []; VIEW = []; // Explicitly clear arrays at the start of search
   setProgress(0); setStatus('Searching…');
 
   let chanIds = new Set();
@@ -544,9 +564,10 @@ async function searchAll(){
 
       let resp;
       try { resp = await fetch(url.toString()); }
-      catch(e){ console.error(e); return alert('Network error during search'); }
+      catch(e){ console.error(e); isSearching=false; return alert('Network error during search'); }
       if(!resp.ok){
         const t = await resp.text();
+        isSearching=false;
         alert('Search API error: '+resp.status+'\n'+t);
         return;
       }
@@ -568,7 +589,7 @@ async function searchAll(){
     }
   }
 
-  if(chanIds.size===0){ setStatus('No channels found'); setProgress(1); return; }
+  if(chanIds.size===0){ setStatus('No channels found'); setProgress(1); isSearching=false; return; }
   setStatus(`Found ${chanIds.size} channels — fetching details…`);
 
   // fetch channels in batches of 50
@@ -582,9 +603,10 @@ async function searchAll(){
 
     let resp;
     try { resp = await fetch(chURL.toString()); }
-    catch(e){ console.error(e); return alert('Network error fetching channels'); }
+    catch(e){ console.error(e); isSearching=false; return alert('Network error fetching channels'); }
     if(!resp.ok){
       const t = await resp.text();
+      isSearching=false;
       alert('Channels API error: '+resp.status+'\n'+t);
       return;
     }
@@ -645,6 +667,7 @@ async function searchAll(){
 
   setProgress(1); setStatus('Ready');
   lastSearch = { queries, perPage, pages, filters:{order,duration,upload,region,definition,safe} };
+  isSearching = false; // Release lock
 }
 
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
@@ -696,6 +719,16 @@ $('clientSort').addEventListener('change', applyClientFiltersAndRender);
 $('minSubs').addEventListener('input', applyClientFiltersAndRender);
 $('maxSubs').addEventListener('input', applyClientFiltersAndRender);
 $('searchInResults').addEventListener('input', applyClientFiltersAndRender);
+$('advancedSearch').addEventListener('change', e => {
+    if (e.target.checked) {
+        alert('Advanced Search will find more channels but will consume more API credits. It will override your "Results per page" and "Pages per query" settings.');
+        $('perPage').disabled = true;
+        $('pages').disabled = true;
+    } else {
+        $('perPage').disabled = false;
+        $('pages').disabled = false;
+    }
+});
 
 function renderResults(list){
   const tbody = $('resultsTbody');
@@ -949,12 +982,13 @@ function getSelected(){
   return Array.from(document.querySelectorAll('.sel:checked')).map(cb => VIEW[Number(cb.dataset.idx)]).filter(Boolean);
 }
 function toCSV(arr){
-  const fields = ['channel','score','subs','videos','views','verified','avgViews','estRevenue','channelId','country','createdAt'];
+  const fields = ['channel','score','subs','videos','views','verified','avgViews','estRevenue','channelId','country','createdAt','socials'];
   let out = fields.join(',')+'\n';
   const estimatedRPM = 5;
   arr.forEach(r => {
     const estRevenue = ((r.views||0) / 1000) * estimatedRPM;
-    out += `"${esc(r.title)}","${r.score}","${r.hidden?'Hidden':r.subs}","${r.videos}","${r.views}","${r.verified}","${Math.round(r.avgViews)}","${Math.round(estRevenue)}","${r.channelId}","${esc(r.country)}","${r.createdAt}"\n`;
+    const socialsStr = JSON.stringify(r.socials);
+    out += `"${esc(r.title)}","${r.score}","${r.hidden?'Hidden':r.subs}","${r.videos}","${r.views}","${r.verified}","${Math.round(r.avgViews)}","${Math.round(estRevenue)}","${r.channelId}","${esc(r.country)}","${r.createdAt}","${esc(socialsStr)}"\n`;
   });
   return out;
 }
