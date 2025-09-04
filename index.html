@@ -138,6 +138,7 @@
   .filters small { color: var(--muted); }
   .switch { display:flex; gap:8px; align-items:center; }
   .row { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+  .row-top { align-items: flex-start; }
 
   /* Results panel (center) */
   .results-wrap {
@@ -238,11 +239,45 @@
     border: 1px solid rgba(255,255,255,.08);
   }
   .stat b { display:block; font-size: 16px; color: #eef; }
+  
+  .details-stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap:10px; }
+  .details-stats .stat { padding:8px; }
 
   .videos-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
   .video-card { background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:8px; }
   .video-card img { width:100%; height:110px; object-fit:cover; border-radius:10px; }
   .video-card h4 { font-size: 13px; margin:8px 0 4px; }
+  
+  .preview-container {
+    position: relative;
+    width: 100%;
+    height: 260px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 10px;
+  }
+
+  .remove-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 10;
+  }
+  
+  .panel-divider {
+    height: 1px;
+    background: rgba(255,255,255,.1);
+    margin: 14px 0;
+  }
 
   /* Custom selects + scrollbar (subtle) */
   select {
@@ -302,18 +337,51 @@
           <select id="region"><option value="">Region: Any</option><option>US</option><option>IN</option><option>GB</option><option>CA</option><option>AU</option><option>DE</option></select>
           <select id="definition"><option value="">Definition: Any</option><option value="high">HD</option><option value="standard">SD</option></select>
           <select id="safe"><option value="">Safe: Any</option><option value="none">None</option><option value="moderate">Moderate</option><option value="strict">Strict</option></select>
-
+          <select id="category">
+            <option value="">Category: Any</option>
+            <option value="1">Film & Animation</option>
+            <option value="2">Autos & Vehicles</option>
+            <option value="10">Music</option>
+            <option value="15">Pets & Animals</option>
+            <option value="17">Sports</option>
+            <option value="19">Travel & Events</option>
+            <option value="20">Gaming</option>
+            <option value="22">People & Blogs</option>
+            <option value="23">Comedy</option>
+            <option value="24">Entertainment</option>
+            <option value="25">News & Politics</option>
+            <option value="26">Howto & Style</option>
+            <option value="27">Education</option>
+            <option value="28">Science & Technology</option>
+            <option value="29">Nonprofits & Activism</option>
+            <option value="30">Movies</option>
+            <option value="31">Anime/Animation</option>
+            <option value="32">Action/Adventure</option>
+            <option value="33">Classics</option>
+            <option value="34">Comedy</option>
+            <option value="35">Documentary</option>
+            <option value="36">Drama</option>
+            <option value="37">Family</option>
+            <option value="38">Foreign</option>
+            <option value="39">Horror</option>
+            <option value="40">Sci-Fi/Fantasy</option>
+            <option value="41">Thriller</option>
+            <option value="42">Shorts</option>
+            <option value="43">Shows</option>
+            <option value="44">Trailers</option>
+          </select>
+          
           <input id="perPage" class="full" type="number" min="1" max="50" value="25" placeholder="Results per page (1–50)"/>
           <input id="pages" class="full" type="number" min="1" max="10" value="2" placeholder="Pages per query (1–10)"/>
 
           <div class="full row">
             <input id="minSubs" type="number" placeholder="Min subs"/>
             <input id="maxSubs" type="number" placeholder="Max subs"/>
-            <input id="searchInResults" type="text" placeholder="Search within results (title / ID)"/>
+            <input id="searchInResults" type="text" placeholder="Search within results (title / ID / desc)"/>
           </div>
 
           <div class="full row">
-            <input id="corsProxy" type="url" placeholder="Optional CORS proxy for verification (best-effort)"/>
+            <input id="corsProxy" type="url" placeholder="Optional CORS proxy for verification (best-effort)" value="https://cors-anywhere.herokuapp.com/"/>
             <label class="switch"><input id="doVerify" type="checkbox"/> <small>Attempt verify check</small></label>
           </div>
 
@@ -329,11 +397,10 @@
           <div class="select-group">
             <button class="btn" id="btnSelectAll">Select All</button>
             <button class="btn" id="btnDeselectAll">Deselect</button>
-            <button class="btn" id="btnSaveLib">Save Library</button>
-            <button class="btn" id="btnLoadLib">Load Library</button>
           </div>
           <div class="sort-group">
             <select id="clientSort">
+              <option value="score-desc">Sort: Score ↓</option>
               <option value="subs-desc">Sort: Subs ↓</option>
               <option value="subs-asc">Sort: Subs ↑</option>
               <option value="views-desc">Sort: Views ↓</option>
@@ -356,6 +423,7 @@
               <tr>
                 <th style="width:42px"></th>
                 <th>Channel</th>
+                <th>Score</th>
                 <th>Subs</th>
                 <th>Videos</th>
                 <th>Views</th>
@@ -401,15 +469,15 @@
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s ?? '').replace(/"/g,'""');
-
-const savedLibraryKey = 'lead_studio_pro_lib_v1';
-function setStatus(t){ $('status').innerText = t; }
-function setProgress(p){ $('progressBar').style.width = Math.min(100, Math.round(p*100)) + '%'; }
+const formatNum = n => (Number(n) || 0).toLocaleString();
 
 let LIB = [];        // enriched channels
 let VIEW = [];       // filtered/sorted view
 let lastExport = [];
 let lastSearch = {};
+
+function setStatus(t){ $('status').innerText = t; }
+function setProgress(p){ $('progressBar').style.width = Math.min(100, Math.round(p*100)) + '%'; }
 
 /* =========================
    SEARCH / FETCH
@@ -443,6 +511,7 @@ async function searchAll(){
   const region = $('region').value || '';
   const definition = $('definition').value || '';
   const safe = $('safe').value || '';
+  const category = $('category').value || '';
   const perPage = clamp(Number($('perPage').value)||25, 1, 50);
   const pages = clamp(Number($('pages').value)||1, 1, 10);
 
@@ -469,6 +538,7 @@ async function searchAll(){
       if(definition) url.searchParams.set('videoDefinition', definition);
       if(safe) url.searchParams.set('safeSearch', safe);
       if(upload) url.searchParams.set('publishedAfter', getPublishedAfterISO(upload));
+      if(category) url.searchParams.set('videoCategoryId', category);
       if(pageToken) url.searchParams.set('pageToken', pageToken);
       url.searchParams.set('key', apiKey);
 
@@ -541,6 +611,9 @@ async function searchAll(){
         country: ch.snippet.country || 'N/A',
         createdAt: ch.snippet.publishedAt || '',
         verified: 'Unknown',
+        socials: extractSocials(ch),
+        score: calculateLeadScore(subs, views),
+        avgViews: (vids > 0) ? (views / vids) : 0,
       });
     });
 
@@ -555,7 +628,7 @@ async function searchAll(){
     for(let i=0;i<LIB.length;i++){
       const c = LIB[i];
       try {
-        const url = `https://cors-anywhere.herokuapp.com/https://www.youtube.com/channel/${c.channelId}`;
+        const url = proxy + '/' + encodeURIComponent(`https://www.youtube.com/channel/${c.channelId}`);
         const r = await fetch(url);
         if(r.ok){
           const txt = (await r.text()).toLowerCase();
@@ -586,7 +659,7 @@ function applyClientFiltersAndRender(){
     if(c.subs < min) return false;
     if(c.subs > max) return false;
     if(needle){
-      const hit = (c.title?.toLowerCase().includes(needle)) || (c.channelId?.toLowerCase().includes(needle));
+      const hit = (c.title?.toLowerCase().includes(needle)) || (c.channelId?.toLowerCase().includes(needle)) || (c.description?.toLowerCase().includes(needle));
       if(!hit) return false;
     }
     return true;
@@ -595,6 +668,7 @@ function applyClientFiltersAndRender(){
   // client sort
   const sort = $('clientSort').value;
   VIEW.sort((a,b) => {
+    if(sort==='score-desc') return (b.score||0) - (a.score||0);
     if(sort==='subs-desc') return (b.subs||0) - (a.subs||0);
     if(sort==='subs-asc')  return (a.subs||0) - (b.subs||0);
     if(sort==='views-desc')return (b.views||0) - (a.views||0);
@@ -609,6 +683,12 @@ function applyClientFiltersAndRender(){
   $('count').innerText = VIEW.length + ' channels';
 }
 
+function calculateLeadScore(subs, views){
+  const subScore = Math.log10(subs + 1) * 10;
+  const viewScore = Math.log10(views + 1) * 5;
+  return Math.round(subScore + viewScore);
+}
+
 /* =========================
    RENDER RESULTS + DETAILS
    ========================= */
@@ -621,7 +701,7 @@ function renderResults(list){
   const tbody = $('resultsTbody');
   tbody.innerHTML = '';
   if(!list.length){
-    tbody.innerHTML = `<tr><td colspan="6" class="meta">No channels match your filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="meta">No channels match your filters.</td></tr>`;
     return;
   }
 
@@ -638,9 +718,10 @@ function renderResults(list){
           </div>
         </div>
       </td>
-      <td>${c.hidden ? 'Hidden' : (c.subs||0).toLocaleString()}</td>
-      <td>${(c.videos||0).toLocaleString()}</td>
-      <td>${(c.views||0).toLocaleString()}</td>
+      <td>${c.score}</td>
+      <td>${c.hidden ? 'Hidden' : formatNum(c.subs)}</td>
+      <td>${formatNum(c.videos)}</td>
+      <td>${formatNum(c.views)}</td>
       <td>${c.verified}</td>
     `;
     tr.addEventListener('click', e => {
@@ -656,25 +737,34 @@ function openDetails(c){
   const banner = $('banner');
   if(c.banner){ banner.style.display='block'; banner.style.backgroundImage = `url('${sanitize(c.banner)}')`; }
   else { banner.style.display='none'; banner.style.backgroundImage='none'; }
+  
+  const estimatedRPM = 5; // Placeholder value for RPM. Can be made a setting.
+  const estRevenue = ((c.views||0) / 1000) * estimatedRPM;
+  const estEngageRate = (c.subs > 0) ? (((c.avgViews * 0.02) / c.subs) * 100) : 0; // rough guess
 
   $('detailContent').innerHTML = `
-    <div class="row" style="align-items:flex-start; margin:6px 0 8px">
-      <img src="${sanitize(c.avatar)}" alt="" style="width:64px;height:64px;border-radius:16px;object-fit:cover;border:1px solid rgba(255,255,255,.08)"/>
+    <div class="row row-top" style="margin:6px 0 8px">
+      <img src="${sanitize(c.avatar)}" alt="" style="width:64px;height:64px;border-radius:16px;object-fit:cover;border:1px solid rgba(255,255,255,.08);margin-right:10px;"/>
       <div>
         <div class="meta" style="margin-bottom:6px">${sanitize(c.channelId)}</div>
         <div class="row">
           <button class="btn btn-primary" onclick="openNew('https://www.youtube.com/channel/${c.channelId}')">Open Channel</button>
-          <button class="btn" onclick="copyText('${c.channelId}')">Copy Channel ID</button>
-          <button class="btn" onclick='exportOne(${JSON.stringify(cToSafe(c))})'>Export Channel</button>
-          <button class="btn" onclick='saveOne(${JSON.stringify(cToSafe(c))})'>Save to Library</button>
+          <button class="btn" onclick="copyText('${c.channelId}')">Copy ID</button>
         </div>
       </div>
     </div>
 
     <div class="stats">
-      <div class="stat"><b>${c.hidden? 'Hidden' : (c.subs||0).toLocaleString()}</b><span class="meta">Subscribers</span></div>
-      <div class="stat"><b>${(c.views||0).toLocaleString()}</b><span class="meta">Total Views</span></div>
-      <div class="stat"><b>${(c.videos||0).toLocaleString()}</b><span class="meta">Videos</span></div>
+      <div class="stat"><b>${c.hidden? 'Hidden' : formatNum(c.subs)}</b><span class="meta">Subscribers</span></div>
+      <div class="stat"><b>${formatNum(c.views)}</b><span class="meta">Total Views</span></div>
+      <div class="stat"><b>${formatNum(c.videos)}</b><span class="meta">Videos</span></div>
+    </div>
+    
+    <div style="margin:10px 0 6px"><b>Key Metrics</b></div>
+    <div class="details-stats">
+      <div class="stat"><b>${formatNum(c.avgViews)}</b><span class="meta">Avg Views</span></div>
+      <div class="stat"><b>$${formatNum(Math.round(estRevenue))}</b><span class="meta">Est. Revenue</span></div>
+      <div class="stat"><b>${estEngageRate.toFixed(1)}%</b><span class="meta">Engage Rate</span></div>
     </div>
 
     <div style="margin:10px 0 6px"><b>Description</b></div>
@@ -686,17 +776,61 @@ function openDetails(c){
       <span class="meta">Verified:</span> <b>${c.verified}</b>
     </div>
     
+    <div style="margin:12px 0 6px"><b>Contact Info & Socials</b></div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px" id="socialLinks"></div>
+    <div id="otherLinksContainer"></div>
     <div style="margin:12px 0 6px"><b>Latest Videos</b></div>
     <div id="latestVideos" class="videos-grid"><div class="meta">Loading…</div></div>
   `;
+
+  const socBox = document.getElementById('socialLinks');
+  socBox.innerHTML = '';
+  if(c.socials){
+    // Display known social media links and email
+    const knownSocials = ['twitter', 'instagram', 'facebook', 'tiktok', 'linkedin', 'email'];
+    knownSocials.forEach(platform => {
+      if(c.socials[platform]){
+        const b = document.createElement('button');
+        b.className='btn';
+        b.innerText = platform.charAt(0).toUpperCase() + platform.slice(1);
+        b.onclick=()=>openNew(c.socials[platform]);
+        socBox.appendChild(b);
+      }
+    });
+    
+    // Display other links
+    const otherLinksContainer = document.getElementById('otherLinksContainer');
+    otherLinksContainer.innerHTML = '';
+    if(c.socials.other_links && c.socials.other_links.length > 0) {
+      const otherLinksTitle = document.createElement('div');
+      otherLinksTitle.innerHTML = `<div style="margin:12px 0 6px"><b>Other Links</b></div>`;
+      otherLinksContainer.appendChild(otherLinksTitle);
+
+      const otherLinksRow = document.createElement('div');
+      otherLinksRow.className = 'row';
+      otherLinksRow.style = 'flex-wrap:wrap;gap:6px;margin-bottom:10px';
+      
+      c.socials.other_links.forEach((link, index) => {
+        const b = document.createElement('button');
+        b.className='btn';
+        b.innerText = `Link ${index+1}`;
+        b.onclick=()=>openNew(link);
+        otherLinksRow.appendChild(b);
+      });
+      otherLinksContainer.appendChild(otherLinksRow);
+    }
+  }
+
   loadLatestVideos(c.channelId);
 }
+
 
 function cToSafe(c){
   // strip big strings that might break inline JSON calls
   return {
     channelId:c.channelId, title:c.title, subs:c.subs, views:c.views, videos:c.videos,
-    verified:c.verified, country:c.country, createdAt:c.createdAt
+    verified:c.verified, country:c.country, createdAt:c.createdAt, score: c.score, socials: c.socials,
+    avgViews: c.avgViews
   };
 }
 
@@ -743,19 +877,12 @@ function removePreview(){
 }
 
 function embed(videoId){
-  // add/replace a small embed at bottom-right of results panel
-  let frame = document.getElementById('previewContainer');
-  if(frame){ frame.remove(); }
+  let container = document.getElementById('previewContainer');
+  if(container){ container.remove(); }
 
-  const container = document.createElement('div');
+  container = document.createElement('div');
   container.id = 'previewContainer';
-  container.style.position = 'relative';
-  container.style.width = '100%';
-  container.style.height = '260px';
-  container.style.border = '1px solid rgba(255,255,255,.08)';
-  container.style.borderRadius = '12px';
-  container.style.overflow = 'hidden';
-  container.style.marginTop = '10px';
+  container.className = 'preview-container';
 
   const iframe = document.createElement('iframe');
   iframe.width = '100%';
@@ -765,19 +892,8 @@ function embed(videoId){
   iframe.style.border = 'none';
 
   const closeButton = document.createElement('button');
-  closeButton.innerHTML = '&times;';
-  closeButton.style.position = 'absolute';
-  closeButton.style.top = '5px';
-  closeButton.style.right = '5px';
-  closeButton.style.background = 'rgba(0,0,0,0.6)';
-  closeButton.style.color = '#fff';
-  closeButton.style.border = 'none';
-  closeButton.style.borderRadius = '50%';
-  closeButton.style.width = '24px';
-  closeButton.style.height = '24px';
-  closeButton.style.fontSize = '16px';
-  closeButton.style.cursor = 'pointer';
-  closeButton.style.zIndex = '10';
+  closeButton.innerHTML = '×';
+  closeButton.className = 'remove-btn';
   closeButton.onclick = removePreview;
 
   container.appendChild(iframe);
@@ -794,22 +910,6 @@ function embed(videoId){
 $('btnSelectAll').addEventListener('click', () => document.querySelectorAll('.sel').forEach(cb => cb.checked = true));
 $('btnDeselectAll').addEventListener('click', () => document.querySelectorAll('.sel').forEach(cb => cb.checked = false));
 
-$('btnSaveLib').addEventListener('click', () => {
-  localStorage.setItem(savedLibraryKey, JSON.stringify(LIB));
-  alert('Library saved locally');
-});
-$('btnLoadLib').addEventListener('click', () => {
-  try {
-    const raw = localStorage.getItem(savedLibraryKey) || '[]';
-    const arr = JSON.parse(raw);
-    if(Array.isArray(arr)){ LIB = arr; applyClientFiltersAndRender(); setStatus('Library loaded'); }
-  } catch(e){ alert('Failed to load library'); }
-});
-$('btnClearResults').addEventListener('click', () => {
-  if(!confirm('Clear current results?')) return;
-  resetResults();
-});
-
 $('btnExportCSV').addEventListener('click', () => {
   if(!lastExport.length) return alert('No data to export');
   const csv = toCSV(lastExport);
@@ -824,6 +924,10 @@ $('btnCopyIDs').addEventListener('click', async () => {
   if(!ids.length) return alert('Select some rows first');
   try{ await navigator.clipboard.writeText(ids.join('\n')); alert('Channel IDs copied'); }
   catch(e){ alert('Copy failed'); }
+});
+$('btnClearResults').addEventListener('click', () => {
+  if(!confirm('Clear current results?')) return;
+  resetResults();
 });
 
 $('btnExportSelected').addEventListener('click', () => {
@@ -845,10 +949,12 @@ function getSelected(){
   return Array.from(document.querySelectorAll('.sel:checked')).map(cb => VIEW[Number(cb.dataset.idx)]).filter(Boolean);
 }
 function toCSV(arr){
-  const fields = ['channel','subs','videos','views','verified','channelId','country','createdAt'];
+  const fields = ['channel','score','subs','videos','views','verified','avgViews','estRevenue','channelId','country','createdAt'];
   let out = fields.join(',')+'\n';
+  const estimatedRPM = 5;
   arr.forEach(r => {
-    out += `"${esc(r.title)}","${r.hidden?'Hidden':r.subs}","${r.videos}","${r.views}","${r.verified}","${r.channelId}","${esc(r.country)}","${r.createdAt}"\n`;
+    const estRevenue = ((r.views||0) / 1000) * estimatedRPM;
+    out += `"${esc(r.title)}","${r.score}","${r.hidden?'Hidden':r.subs}","${r.videos}","${r.views}","${r.verified}","${Math.round(r.avgViews)}","${Math.round(estRevenue)}","${r.channelId}","${esc(r.country)}","${r.createdAt}"\n`;
   });
   return out;
 }
@@ -860,19 +966,38 @@ function downloadText(text, filename, type){
   setTimeout(()=>URL.revokeObjectURL(url), 1500);
 }
 
-function exportOne(c){
-  const csv = toCSV([c]);
-  downloadText(csv, `channel_${c.channelId}.csv`, 'text/csv');
-}
-function saveOne(c){
+/* =========================
+   CONTACT INFO EXTRACTION
+   ========================= */
+function extractSocials(ch){
+  const links = [];
+  // branding links
   try{
-    const lib = JSON.parse(localStorage.getItem(savedLibraryKey) || '[]');
-    if(!lib.find(x => x.channelId === c.channelId)) lib.push(c);
-    localStorage.setItem(savedLibraryKey, JSON.stringify(lib));
-    alert('Saved to library');
-  }catch(e){ alert('Save failed'); }
+    const bl = ch.brandingSettings?.channel?.externalLinks || ch.brandingSettings?.channel?.links || [];
+    bl.forEach(l => { if(l.url) links.push(l.url); });
+  }catch(e){}
+  // description parse
+  const desc = (ch.snippet?.description||'') + ' ' + (ch.brandingSettings?.channel?.description||'');
+  const regex = /(https?:\/\/(?:www\.)?[\w.-]+\.[a-z]{2,}(?:[\w\-._~:/?#[\]@!$&'()*+,;=%]*)?)/gi;
+  let m; while((m=regex.exec(desc))!==null){ links.push(m[1]); }
+  const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/gi;
+  while((m=emailRegex.exec(desc))!==null){ links.push('mailto:'+m[1]); }
+  
+  // deduplicate
+  const uniq = Array.from(new Set(links));
+  const socials = {};
+  socials.other_links = []; // Initialize other_links array
+  uniq.forEach(u=>{
+    if(/twitter\.com/i.test(u)) socials.twitter=u;
+    else if(/instagram\.com/i.test(u)) socials.instagram=u;
+    else if(/facebook\.com/i.test(u)) socials.facebook=u;
+    else if(/tiktok\.com/i.test(u)) socials.tiktok=u;
+    else if(/linkedin\.com/i.test(u)) socials.linkedin=u;
+    else if(/mailto:/i.test(u)) socials.email=u;
+    else socials.other_links.push(u);
+  });
+  return socials;
 }
-
 
 /* =========================
    UTIL
@@ -890,6 +1015,7 @@ function openNew(u){ window.open(u,'_blank'); }
 async function copyText(t){ try{ await navigator.clipboard.writeText(t); alert('Copied'); } catch(e){ alert('Copy failed'); } }
 
 /* init */
+resetResults();
 setStatus('Ready'); setProgress(0);
 </script>
 </body>
