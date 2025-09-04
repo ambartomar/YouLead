@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Lead Studio Pro — YouTube Channel Finder</title>
+<title>YouLead - YouTube Channel Finder</title>
 <style>
   /* =========================
      THEME — Apple-ish + Purple
@@ -220,6 +220,41 @@
   }
   .avatar { width:42px; height:42px; border-radius: 12px; object-fit: cover; margin-right:10px; }
 
+  /* Custom Checkbox styles */
+  .custom-checkbox {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      background: rgba(255,255,255,0.1);
+      position: relative;
+      cursor: pointer;
+      vertical-align: middle;
+      transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  .custom-checkbox.checked {
+      background: var(--accent);
+      border-color: var(--accent);
+  }
+  .custom-checkbox::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      background: #fff;
+      transform: translate(-50%, -50%) scale(0);
+      opacity: 0;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+  .custom-checkbox.checked::after {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+  }
+
   /* Details panel (right) */
   .details {
     height: 100%;
@@ -376,7 +411,7 @@
 
           <div class="full row">
             <label class="switch">
-              <input id="advancedSearch" type="checkbox"/>
+              <div id="advancedSearch" class="custom-checkbox"></div>
               <small>Advanced Search</small>
             </label>
             <small class="meta"> (More results, more credits)</small>
@@ -390,7 +425,7 @@
 
           <div class="full row">
             <input id="corsProxy" type="url" placeholder="Optional CORS proxy for verification (best-effort)" value="https://cors-anywhere.herokuapp.com/"/>
-            <label class="switch"><input id="doVerify" type="checkbox"/> <small>Attempt verify check</small></label>
+            <label class="switch"><div id="doVerify" class="custom-checkbox"></div> <small>Attempt verify check</small></label>
           </div>
 
           <div class="full row" style="justify-content:space-between;margin-top:2px">
@@ -495,6 +530,23 @@ $('btnSearch').addEventListener('click', searchAll);
 $('btnClear').addEventListener('click', () => { $('query').value=''; resetResults(); });
 $('query').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)) searchAll(); });
 
+$('advancedSearch').addEventListener('click', () => {
+  $('advancedSearch').classList.toggle('checked');
+  const isChecked = $('advancedSearch').classList.contains('checked');
+  if (isChecked) {
+    alert('Advanced Search will find more channels but will consume more API credits. It will override your "Results per page" and "Pages per query" settings.');
+    $('perPage').disabled = true;
+    $('pages').disabled = true;
+  } else {
+    $('perPage').disabled = false;
+    $('pages').disabled = false;
+  }
+});
+$('doVerify').addEventListener('click', () => {
+  $('doVerify').classList.toggle('checked');
+});
+
+
 function getPublishedAfterISO(choice){
   const d = new Date();
   if(choice==='hour') d.setHours(d.getHours()-1);
@@ -529,7 +581,7 @@ async function searchAll(){
   let perPage = clamp(Number($('perPage').value)||25, 1, 50);
   let pages = clamp(Number($('pages').value)||1, 1, 10);
   
-  if ($('advancedSearch').checked) {
+  if ($('advancedSearch').classList.contains('checked')) {
       perPage = 50;
       pages = 4;
   }
@@ -644,7 +696,7 @@ async function searchAll(){
   }
 
   // Optional verify scraping
-  if($('doVerify').checked && $('corsProxy').value.trim()){
+  if($('doVerify').classList.contains('checked') && $('corsProxy').value.trim()){
     setStatus('Verifying channels (best-effort)…');
     const proxy = $('corsProxy').value.trim().replace(/\/$/,'');
     for(let i=0;i<LIB.length;i++){
@@ -719,16 +771,7 @@ $('clientSort').addEventListener('change', applyClientFiltersAndRender);
 $('minSubs').addEventListener('input', applyClientFiltersAndRender);
 $('maxSubs').addEventListener('input', applyClientFiltersAndRender);
 $('searchInResults').addEventListener('input', applyClientFiltersAndRender);
-$('advancedSearch').addEventListener('change', e => {
-    if (e.target.checked) {
-        alert('Advanced Search will find more channels but will consume more API credits. It will override your "Results per page" and "Pages per query" settings.');
-        $('perPage').disabled = true;
-        $('pages').disabled = true;
-    } else {
-        $('perPage').disabled = false;
-        $('pages').disabled = false;
-    }
-});
+
 
 function renderResults(list){
   const tbody = $('resultsTbody');
@@ -741,7 +784,7 @@ function renderResults(list){
   list.forEach((c, idx) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="checkbox" class="sel" data-idx="${idx}"/></td>
+      <td><div class="custom-checkbox" data-idx="${idx}"></div></td>
       <td>
         <div style="display:flex;align-items:center;gap:10px">
           <img class="avatar" src="${sanitize(c.avatar)}" alt="">
@@ -758,7 +801,15 @@ function renderResults(list){
       <td>${c.verified}</td>
     `;
     tr.addEventListener('click', e => {
-      if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='BUTTON' || e.target.tagName==='A')) return;
+      // Toggle checkbox only if the click target isn't the checkbox itself
+      const isCheckbox = e.target.classList.contains('custom-checkbox');
+      if (isCheckbox) {
+          e.target.classList.toggle('checked');
+      } else {
+          // If not the checkbox, check if it's a child element
+          const checkbox = tr.querySelector('.custom-checkbox');
+          checkbox.classList.toggle('checked');
+      }
       openDetails(c);
     });
     tbody.appendChild(tr);
@@ -940,8 +991,16 @@ function embed(videoId){
 /* =========================
    EXPORTS / LIBRARY / SELECT
    ========================= */
-$('btnSelectAll').addEventListener('click', () => document.querySelectorAll('.sel').forEach(cb => cb.checked = true));
-$('btnDeselectAll').addEventListener('click', () => document.querySelectorAll('.sel').forEach(cb => cb.checked = false));
+$('btnSelectAll').addEventListener('click', () => {
+  document.querySelectorAll('.custom-checkbox').forEach(cb => {
+    cb.classList.add('checked');
+  });
+});
+$('btnDeselectAll').addEventListener('click', () => {
+  document.querySelectorAll('.custom-checkbox').forEach(cb => {
+    cb.classList.remove('checked');
+  });
+});
 
 $('btnExportCSV').addEventListener('click', () => {
   if(!lastExport.length) return alert('No data to export');
@@ -979,7 +1038,10 @@ $('btnCopySelected').addEventListener('click', async () => {
 });
 
 function getSelected(){
-  return Array.from(document.querySelectorAll('.sel:checked')).map(cb => VIEW[Number(cb.dataset.idx)]).filter(Boolean);
+  return Array.from(document.querySelectorAll('.custom-checkbox.checked')).map(cb => {
+    const idx = Number(cb.dataset.idx);
+    return VIEW[idx];
+  }).filter(Boolean);
 }
 function toCSV(arr){
   const fields = ['channel','score','subs','videos','views','verified','avgViews','estRevenue','channelId','country','createdAt','socials'];
